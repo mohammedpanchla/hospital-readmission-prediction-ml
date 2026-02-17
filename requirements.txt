@@ -1,0 +1,241 @@
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+joblib
+jupyter
+
+
+
+
+# ============================================
+# Hospital Readmission Prediction App
+# ============================================
+
+import streamlit as st
+import pandas as pd
+import joblib
+
+# ============================================
+# Streamlit Page Config (MUST BE FIRST)
+# ============================================
+
+st.set_page_config(
+    page_title="Hospital Readmission Predictor",
+    layout="centered"
+)
+
+# ============================================
+# Custom CSS for professional UI
+# ============================================
+
+st.markdown("""
+<style>
+
+/* Main background */
+.stApp {
+    background: linear-gradient(135deg, #f5f7fa, #e4ecf7);
+}
+
+/* Title styling */
+.main-title {
+    font-size: 42px;
+    font-weight: 700;
+    color: #1f4e79;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    font-size: 18px;
+    color: #4a4a4a;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+/* Card container */
+.card {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+
+/* Result cards */
+.result-high {
+    background-color: #ffe6e6;
+    color: #b30000;
+    padding: 20px;
+    border-radius: 12px;
+    font-weight: bold;
+    text-align: center;
+    font-size: 20px;
+}
+
+.result-low {
+    background-color: #e6f7e6;
+    color: #006600;
+    padding: 20px;
+    border-radius: 12px;
+    font-weight: bold;
+    text-align: center;
+    font-size: 20px;
+}
+
+/* Probability styling */
+.probability {
+    text-align: center;
+    font-size: 18px;
+    margin-top: 10px;
+}
+
+/* Button styling */
+.stButton > button {
+    width: 100%;
+    background-color: #1f77b4;
+    color: white;
+    font-size: 18px;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+}
+
+.stButton > button:hover {
+    background-color: #155a8a;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================
+# Load trained artifacts
+# ============================================
+
+import os
+
+# Get current file directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+MODEL_PATH = os.path.join(BASE_DIR, "..", "model", "model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "..", "model", "scaler.pkl")
+COLUMNS_PATH = os.path.join(BASE_DIR, "..", "model", "columns.pkl")
+
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+training_columns = joblib.load(COLUMNS_PATH)
+
+scaler_columns = scaler.feature_names_in_
+
+OPTIMAL_THRESHOLD = 0.31
+
+# ============================================
+# Header UI
+# ============================================
+
+st.markdown(
+    '<div class="main-title">🏥 Hospital Readmission Predictor</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">AI-powered system to predict 30-day patient readmission risk</div>',
+    unsafe_allow_html=True
+)
+
+# ============================================
+# Input Card
+# ============================================
+
+st.markdown('<div class="card">', unsafe_allow_html=True)
+
+st.subheader("Patient Information")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    age = st.slider("Age", 18, 100, 50)
+    num_lab_procedures = st.slider("Lab Procedures", 1, 150, 40)
+    num_medications = st.slider("Medications", 1, 50, 10)
+
+with col2:
+    time_in_hospital = st.slider("Hospital Stay (days)", 1, 30, 5)
+    num_prior_admissions = st.slider("Prior Admissions", 0, 20, 1)
+
+admission_type = st.selectbox(
+    "Admission Type",
+    ["Emergency", "Urgent", "Elective"]
+)
+
+discharge_disposition = st.selectbox(
+    "Discharge Disposition",
+    ["Home", "Transfer", "Rehabilitation"]
+)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================
+# Prediction Logic
+# ============================================
+
+if st.button("Predict Readmission"):
+
+    try:
+
+        input_data = {
+            "age": age,
+            "num_lab_procedures": num_lab_procedures,
+            "num_medications": num_medications,
+            "time_in_hospital": time_in_hospital,
+            "num_prior_admissions": num_prior_admissions,
+            "admission_type": admission_type,
+            "discharge_disposition": discharge_disposition,
+        }
+
+        input_df = pd.DataFrame([input_data])
+
+        input_df = pd.get_dummies(input_df)
+
+        for col in training_columns:
+            if col not in input_df.columns:
+                input_df[col] = 0
+
+        input_df = input_df[training_columns]
+
+        input_df[scaler_columns] = scaler.transform(
+            input_df[scaler_columns]
+        )
+
+        probability = model.predict_proba(input_df)[0][1]
+
+        prediction = 1 if probability >= OPTIMAL_THRESHOLD else 0
+
+        # ====================================
+        # Result Card
+        # ====================================
+
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+
+        st.subheader("Prediction Result")
+
+        if prediction == 1:
+            st.markdown(
+                '<div class="result-high">⚠️ High Risk of Readmission</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                '<div class="result-low">✅ Low Risk of Readmission</div>',
+                unsafe_allow_html=True
+            )
+
+        st.markdown(
+            f'<div class="probability">Probability: <b>{probability:.2%}</b></div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Prediction failed: {str(e)}")
